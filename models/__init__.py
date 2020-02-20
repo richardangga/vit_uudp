@@ -19,9 +19,3 @@
 #
 ##############################################################################
 from . import uudp
-from . import uudp_pencairan
-from . import ir_attachment
-from . import journal
-from . import pencairan_batches
-from . import res
-from . import product
