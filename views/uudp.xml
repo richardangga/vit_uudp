@@ -24,12 +24,6 @@
                     </group>    
                 </page>
             </notebook>  
-            <xpath expr="//notebook/page/field/tree/field[@name='qty']" position="replace">
-                <field name="qty" sum="Total Amount" style="color: white;"/>
-            </xpath>
-            <xpath expr="//notebook/page/field/tree/field[@name='sub_total']" position="replace">
-                <field name="sub_total" sum="Total Amount" style="color: white;"/>
-            </xpath>      
         </field>
     </record>    
     <record id="inherit_penyelesaian_form" model="ir.ui.view">
@@ -100,12 +94,6 @@
                     </group> 
                 </page>
             </xpath>    
-            <xpath expr="//notebook/page/field/tree/field[@name='qty']" position="replace">
-                <field name="qty" sum="Total Amount" style="color: white;"/>
-            </xpath>
-            <xpath expr="//notebook/page/field/tree/field[@name='sub_total']" position="replace">
-                <field name="sub_total" sum="Total Amount" style="color: white;"/>
-            </xpath>    
         </field>
     </record>
     <record id="inherit_pencairan_form" model="ir.ui.view">
@@ -113,7 +101,16 @@
         <field name="model">uudp.pencairan</field>
         <field name="inherit_id" ref="vit_uudp.view_uudp_pencairan_form"/>
         <field name="arch" type="xml">
-            <notebook position="inside">     
+            <xpath expr="//sheet/group/group[2]/field[@name='coa_kredit']" position="replace">
+                <field name="coa_kredit" attrs="{'readonly': [('state','in',('done','cancel','refuse'))]}" domain="[('company_id','=',company_id)]"/>
+            </xpath>
+            <xpath expr="//sheet/group/group[2]/field[@name='journal_entry_id']" position="replace"/>
+            <notebook position="inside">
+                <page string="Information" groups="account.group_account_manager">
+                    <group>
+                        <field name="journal_entry_id" options='{"no_create": 1}' groups="account.group_account_manager" attrs="{'invisible':[('type','!=','once')]}" readonly="1"/>
+                    </group>
+                </page>
                 <page string="Approval Level">
                     <group>
                         <field name="reviewed_by"/>

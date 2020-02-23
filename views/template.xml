@@ -1,0 +1,9 @@
+<odoo>
+	<data>
+	<template id="change_total_color_white" name="my_module assets" inherit_id="web.assets_backend">
+	    <xpath expr="." position="inside">
+	        <link rel="stylesheet" href="/vit_uudp_change_inherit/static/custom.css"/>
+	    </xpath>
+	</template>
+	</data>
+</odoo>

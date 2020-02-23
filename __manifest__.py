@@ -48,6 +48,7 @@
         "security/uudp_sequence.xml",
         # "security/group.xml",
         "views/uudp.xml",
+        "views/template.xml",
         "security/ir.model.access.csv",
         ],
     "demo": [],

@@ -169,6 +169,32 @@ class uudp(models.Model):
                     raise AccessError(_('Gagal membuat journal entry') )
                 return self.write({'state' : 'done'})
 
+        if self.type_pencairan == 'once':
+                journal_id = self.ajuan_id.pencairan_id.journal_id
+                if not journal_id :
+                    journal_id = self.env['account.move'].sudo().search([('ref','ilike','%'+self.ajuan_id.name+'%')],limit=1)
+                    if not journal_id :
+                        raise AccessError(_('Journal pencairan tidak ditemukan !'))
+                    journal_id = journal_id.journal_id
+                data={"journal_id":journal_id.id,
+                      "ref":self.name + ' - '+ self.ajuan_id.name,
+                      "date":self.date,
+                      "narration" : self.notes,
+                      "company_id":self.company_id.id,
+                      "line_ids":account_move_line,}
+
+                journal_entry = self.env['account.move'].create(data)
+                if journal_entry:
+                    journal_entry.post()
+                    self.write_state_line('done')
+                    self.ajuan_id.write({'selesai':True})
+                    self.post_mesages_uudp('Done')
+                    return self.write({'state' : 'done', 'journal_entry_id':journal_entry.id})
+                else:
+                    raise AccessError(_('Gagal membuat journal entry') )
+                return self.write({'state' : 'done'})
+
+
 uudp()
 
 
@@ -200,5 +226,103 @@ class uudpPencairan(models.Model):
     reviewed_by = fields.Many2one(comodel_name='hr.employee',string='Reviewed by')
     budgeted_by = fields.Many2one(comodel_name='hr.employee',string='Budget Confirmed')
     approved_by = fields.Many2one(comodel_name='hr.employee',string='Approved by')
+
+
+    @api.multi
+    def button_done_once(self):
+        self.ensure_one()
+        total_ajuan = 0
+        now = datetime.datetime.now()
+        if self.uudp_ids:
+            for ajuan in self.uudp_ids:
+                tgl_pencairan = self.tgl_pencairan
+                if ajuan.tgl_pencairan :
+                    tgl_pencairan = ajuan.tgl_pencairan
+                #  tansfer tidak langsung create jurnal
+                if ajuan.cara_bayar == 'transfer' :
+                    datas = {'total_pencairan'          : ajuan.total_ajuan,
+                                'state'                 : 'confirm_accounting',
+                                'pencairan_id'          : self.id,
+                                'tgl_pencairan'         : tgl_pencairan,
+                                'terbilang'             : terbilang.terbilang(int(round(ajuan.total_ajuan,0)), "IDR", "id"),}
+                    ajuan.write(datas)
+                    continue 
+                account_move = self.env['account.move']
+                reference =  self.name + ' - ' + ajuan.name
+                account_move_line = []
+                total_kredit = 0
+                # not_confirmed_accounting = ajuan.uudp_ids.filtered(lambda x: x.state != 'confirm_accounting')
+                # if not_confirmed_accounting :
+                #     raise AccessError(_('Ada ajuan yang belum confirm accounting !') )
+                partner = ajuan.responsible_id.partner_id.id
+                for juan in ajuan.uudp_ids :
+                    if juan.partner_id :
+                        partner = juan.partner_id.id
+                    tag_id = False
+                    if juan.store_id and juan.store_id.account_analytic_tag_id :
+                        tag_id = [(6, 0, [juan.store_id.account_analytic_tag_id.id])]
+                    if ajuan.type == 'pengajuan' :
+                        debit = ajuan.coa_debit
+                        if not debit :
+                            raise AccessError(_('Debit acount pada ajuan %s belum diisi !') % (ajuan.name) )
+                    else :
+                        debit = juan.coa_debit
+                        if not debit :
+                            raise AccessError(_('Debit Account lines pada ajuan %s belum diisi !') % (ajuan.name) )
+                    #account debit
+                    if juan.total > 0.0 :
+                        account_move_line.append((0, 0 ,{'account_id'       : debit.id,
+                                                        'partner_id'        : partner,
+                                                        'analytic_account_id' : ajuan.department_id.analytic_account_id.id or False,
+                                                        'analytic_tag_ids'  : tag_id,
+                                                        'name'              : juan.description,
+                                                        'debit'             : juan.total,
+                                                        'date'              : tgl_pencairan,
+                                                        'date_maturity'     : tgl_pencairan}))
+                    elif juan.total < 0.0 :
+                        account_move_line.append((0, 0 ,{'account_id'       : debit.id,
+                                                        'partner_id'        : partner,
+                                                        'analytic_account_id' : ajuan.department_id.analytic_account_id.id or False,
+                                                        'analytic_tag_ids'  : tag_id,
+                                                        'name'              : juan.description,
+                                                        'credit'             : -juan.total,
+                                                        'date'              : tgl_pencairan,
+                                                        'date_maturity'     : tgl_pencairan}))
+                #account credit bank / hutang
+                notes = ajuan.notes
+                if not notes :
+                    notes= self.coa_kredit.name
+                account_move_line.append((0, 0 ,{'account_id'       : self.coa_kredit.id,
+                                                'partner_id'        : ajuan.responsible_id.partner_id.id,
+                                                'analytic_account_id' : ajuan.department_id.analytic_account_id.id or False,
+                                                'name'              : notes,
+                                                'credit'            : ajuan.total_ajuan,
+                                                'date'              : tgl_pencairan,
+                                                'date_maturity'     : tgl_pencairan}))
+
+                journal_id = ajuan.pencairan_id.journal_id
+                if not journal_id :
+                    journal_id = self.env['account.move'].sudo().search([('ref','ilike','%'+ajuan.name+'%')],limit=1)
+                    if not journal_id :
+                        raise AccessError(_('Journal pencairan tidak ditemukan !'))
+                    journal_id = journal_id.journal_id
+                data={"journal_id"  : self.journal_id.id,
+                      "ref"         : self.name + ' - ' + ajuan.name,
+                      "date"        : tgl_pencairan,
+                      "company_id"  : self.company_id.id,
+                      "narration"   : self.notes,
+                      "terbilang"   : terbilang.terbilang(int(round(ajuan.total_ajuan,0)), "IDR", "id"),
+                      "line_ids"    : account_move_line,}
+
+                journal_entry = self.env['account.move'].create(data)
+                if journal_entry:
+                    journal_entry.post()
+                    # self.write_state_line('done')
+                    ajuan.write({'selesai':True})
+                    self.post_mesages_pencairan('Done')
+                    return self.write({'state' : 'done', 'journal_entry_id':journal_entry.id})
+                else:
+                    raise AccessError(_('Gagal membuat journal entry') )
+                return self.write({'state' : 'done'})
 
 uudpPencairan()
